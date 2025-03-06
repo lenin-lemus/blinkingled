@@ -1,37 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "esp_mac.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_system.h"
-#include "spi_flash_mmap.h"
 #include <esp_http_server.h>
-
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "freertos/event_groups.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-#include "esp_netif.h"
-#include "driver/gpio.h"
-#include "rom/gpio.h"
 #include <lwip/sockets.h>
 #include <lwip/sys.h>
 #include <lwip/api.h>
 #include <lwip/netdb.h>
+#include "freertos/event_groups.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_mac.h"
+#include "esp_system.h"
+#include "esp_spiffs.h"
+//#include "spiffs_config.h"
+#include "spi_flash_mmap.h"
+#include "nvs_flash.h"
+#include "driver/gpio.h"
+#include "rom/gpio.h"
 
 #define LED_PIN 2
 
-char on_resp[] = "<!DOCTYPE html><html><head><style type=\"text/css\">html {  font-family: Arial;  display: inline-block;  margin: 0px auto;  text-align: center;}h1{  color: #070812;  padding: 2vh;}.button {  display: inline-block;  background-color: #b30000; //red color  border: none;  border-radius: 4px;  color: white;  padding: 16px 40px;  text-decoration: none;  font-size: 30px;  margin: 2px;  cursor: pointer;}.button2 {  background-color: #364cf4; //blue color}.content {   padding: 50px;}.card-grid {  max-width: 800px;  margin: 0 auto;  display: grid;  grid-gap: 2rem;  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));}.card {  background-color: white;  box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);}.card-title {  font-size: 1.2rem;  font-weight: bold;  color: #034078}</style>  <title>ESP32 WEB SERVER</title>  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  <link rel=\"icon\" href=\"data:,\">  <link rel=\"stylesheet\" href=\"https://use.fontawesome.com/releases/v5.7.2/css/all.css\"    integrity=\"sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr\" crossorigin=\"anonymous\">  <link rel=\"stylesheet\" type=\"text/css\" ></head><body>  <h2>ESP32 WEB SERVER</h2>  <div class=\"content\">    <div class=\"card-grid\">      <div class=\"card\">        <p><i class=\"fas fa-lightbulb fa-2x\" style=\"color:#c81919;\"></i>     <strong>GPIO2</strong></p>        <p>GPIO state: <strong> ON</strong></p>        <p>          <a href=\"/led2on\"><button class=\"button\">ON</button></a>          <a href=\"/led2off\"><button class=\"button button2\">OFF</button></a>        </p>      </div>    </div>  </div></body></html>";
+/** Página web */
+char template_index_html[4096];
+char response_data[4096];
+#define TEMPLATE_INDEX_HTML_PATH "/storage/index.html"
 
-char off_resp[] = "<!DOCTYPE html><html><head><style type=\"text/css\">html {  font-family: Arial;  display: inline-block;  margin: 0px auto;  text-align: center;}h1{  color: #070812;  padding: 2vh;}.button {  display: inline-block;  background-color: #b30000; //red color  border: none;  border-radius: 4px;  color: white;  padding: 16px 40px;  text-decoration: none;  font-size: 30px;  margin: 2px;  cursor: pointer;}.button2 {  background-color: #364cf4; //blue color}.content {   padding: 50px;}.card-grid {  max-width: 800px;  margin: 0 auto;  display: grid;  grid-gap: 2rem;  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));}.card {  background-color: white;  box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);}.card-title {  font-size: 1.2rem;  font-weight: bold;  color: #034078}</style>  <title>ESP32 WEB SERVER</title>  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  <link rel=\"icon\" href=\"data:,\">  <link rel=\"stylesheet\" href=\"https://use.fontawesome.com/releases/v5.7.2/css/all.css\"    integrity=\"sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr\" crossorigin=\"anonymous\">  <link rel=\"stylesheet\" type=\"text/css\"></head><body>  <h2>ESP32 WEB SERVER</h2>  <div class=\"content\">    <div class=\"card-grid\">      <div class=\"card\">        <p><i class=\"fas fa-lightbulb fa-2x\" style=\"color:#c81919;\"></i>     <strong>GPIO2</strong></p>        <p>GPIO state: <strong> OFF</strong></p>        <p>          <a href=\"/led2on\"><button class=\"button\">ON</button></a>          <a href=\"/led2off\"><button class=\"button button2\">OFF</button></a>        </p>      </div>    </div>  </div></body></html>";
+//char on_resp[] = "<!DOCTYPE html><html><head><style type=\"text/css\">html {  font-family: Arial;  display: inline-block;  margin: 0px auto;  text-align: center;}h1{  color: #070812;  padding: 2vh;}.button {  display: inline-block;  background-color: #b30000; //red color  border: none;  border-radius: 4px;  color: white;  padding: 16px 40px;  text-decoration: none;  font-size: 30px;  margin: 2px;  cursor: pointer;}.button2 {  background-color: #364cf4; //blue color}.content {   padding: 50px;}.card-grid {  max-width: 800px;  margin: 0 auto;  display: grid;  grid-gap: 2rem;  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));}.card {  background-color: white;  box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);}.card-title {  font-size: 1.2rem;  font-weight: bold;  color: #034078}</style>  <title>ESP32 WEB SERVER</title>  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  <link rel=\"icon\" href=\"data:,\">  <link rel=\"stylesheet\" href=\"https://use.fontawesome.com/releases/v5.7.2/css/all.css\"    integrity=\"sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr\" crossorigin=\"anonymous\">  <link rel=\"stylesheet\" type=\"text/css\" ></head><body>  <h2>ESP32 WEB SERVER</h2>  <div class=\"content\">    <div class=\"card-grid\">      <div class=\"card\">        <p><i class=\"fas fa-lightbulb fa-2x\" style=\"color:#c81919;\"></i>     <strong>GPIO2</strong></p>        <p>GPIO state: <strong> ON</strong></p>        <p>          <a href=\"/led2on\"><button class=\"button\">ON</button></a>          <a href=\"/led2off\"><button class=\"button button2\">OFF</button></a>        </p>      </div>    </div>  </div></body></html>";
+//char off_resp[] = "<!DOCTYPE html><html><head><style type=\"text/css\">html {  font-family: Arial;  display: inline-block;  margin: 0px auto;  text-align: center;}h1{  color: #070812;  padding: 2vh;}.button {  display: inline-block;  background-color: #b30000; //red color  border: none;  border-radius: 4px;  color: white;  padding: 16px 40px;  text-decoration: none;  font-size: 30px;  margin: 2px;  cursor: pointer;}.button2 {  background-color: #364cf4; //blue color}.content {   padding: 50px;}.card-grid {  max-width: 800px;  margin: 0 auto;  display: grid;  grid-gap: 2rem;  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));}.card {  background-color: white;  box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);}.card-title {  font-size: 1.2rem;  font-weight: bold;  color: #034078}</style>  <title>ESP32 WEB SERVER</title>  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">  <link rel=\"icon\" href=\"data:,\">  <link rel=\"stylesheet\" href=\"https://use.fontawesome.com/releases/v5.7.2/css/all.css\"    integrity=\"sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr\" crossorigin=\"anonymous\">  <link rel=\"stylesheet\" type=\"text/css\"></head><body>  <h2>ESP32 WEB SERVER</h2>  <div class=\"content\">    <div class=\"card-grid\">      <div class=\"card\">        <p><i class=\"fas fa-lightbulb fa-2x\" style=\"color:#c81919;\"></i>     <strong>GPIO2</strong></p>        <p>GPIO state: <strong> OFF</strong></p>        <p>          <a href=\"/led2on\"><button class=\"button\">ON</button></a>          <a href=\"/led2off\"><button class=\"button button2\">OFF</button></a>        </p>      </div>    </div>  </div></body></html>";
 
-static const char *TAG = "espressif"; // TAG for debug
+static const char *TAG = "WEBSERVER"; 
 int led_state = 0;
 
-#define EXAMPLE_ESP_WIFI_SSID "FibraValencia_479A2"
-#define EXAMPLE_ESP_WIFI_PASS "Ktk2ByE9"
+#define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
+#define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
 #define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
 
 /* FreeRTOS event group to signal when we are connected*/
@@ -126,34 +131,34 @@ void connect_wifi(void)
 
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
-    if (bits & WIFI_CONNECTED_BIT)
-    {
+    if (bits & WIFI_CONNECTED_BIT){
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
     }
-    else if (bits & WIFI_FAIL_BIT)
-    {
+    else if (bits & WIFI_FAIL_BIT){
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
     }
-    else
-    {
+    else{
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
     vEventGroupDelete(s_wifi_event_group);
 }
 
-esp_err_t send_web_page(httpd_req_t *req)
-{
+esp_err_t send_web_page(httpd_req_t *req){
     int response;
-    if (led_state == 0)
-        response = httpd_resp_send(req, off_resp, HTTPD_RESP_USE_STRLEN);
-    else
-        response = httpd_resp_send(req, on_resp, HTTPD_RESP_USE_STRLEN);
+    if (led_state == 0){
+        sprintf(response_data, template_index_html, "OFF");
+        //response = httpd_resp_send(req, off_resp, HTTPD_RESP_USE_STRLEN);
+    } else {
+        sprintf(response_data, template_index_html, "ON");
+        //response = httpd_resp_send(req, on_resp, HTTPD_RESP_USE_STRLEN);
+    }
+
+    response = httpd_resp_send(req, response_data, HTTPD_RESP_USE_STRLEN);
     return response;
 }
-esp_err_t get_req_handler(httpd_req_t *req)
-{
+esp_err_t get_req_handler(httpd_req_t *req){
     return send_web_page(req);
 }
 
@@ -206,6 +211,64 @@ httpd_handle_t setup_server(void)
     return server;
 }
 
+/*****
+ * 
+ */
+
+void setupSpiffs(){
+    esp_vfs_spiffs_conf_t config = {
+        .base_path = "/storage",
+        .partition_label = NULL,
+        .max_files = 5,
+        .format_if_mount_failed = true
+    };
+    esp_err_t result = esp_vfs_spiffs_register(&config);
+    if (result  != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize (%s)", esp_err_to_name(result));
+    }
+    size_t total = 0, used = 0;
+    result = esp_spiffs_info(config.partition_label, &total, &used);
+    if (result  != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get partition (%s)", esp_err_to_name(result));
+    } else {
+        ESP_LOGI(TAG,"Partition size: total: %d, used: %d", total, used);
+        ESP_LOGI(TAG, "SPIFFS properly initialized");
+    }   
+   
+}
+
+/** Index.html */
+
+
+void readIndexHtml(){
+   /*  FILE* f = fopen("/storage/myfile.txt", "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return;
+    }
+    char line[64];
+    fgets(line, sizeof(line), f);
+    fclose(f);
+    printf("%s\n", line);
+
+    ESP_LOGI(TAG, "File content %s\n", line); 
+    */
+    memset((void *) template_index_html, 0, sizeof(template_index_html));
+    struct stat st;
+    if (stat(TEMPLATE_INDEX_HTML_PATH, &st)){
+        ESP_LOGE(TAG, "index.html not found");
+        return;
+    }
+
+    FILE *fp = fopen(TEMPLATE_INDEX_HTML_PATH, "r");
+    if (fread(template_index_html, st.st_size, 1, fp) == 0){
+        ESP_LOGE(TAG, "fread failed");
+    }
+    fclose(fp);
+}
+/***********************************************************
+ * 
+ ***********************/
 void app_main()
 {
     // Initialize NVS
@@ -216,6 +279,10 @@ void app_main()
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // index page
+    setupSpiffs();
+    readIndexHtml();
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     connect_wifi();

@@ -10,5 +10,12 @@
     "idf.customExtraVars": {
         "IDF_TARGET": "esp32s3"
     },
-    "idf.flashType": "UART"
+    "idf.flashType": "UART",
+    "files.associations": {
+        "*.sqlbook": "sql",
+        "*.ndjson": "jsonl",
+        "*.dbclient-js": "javascript",
+        "netdb.h": "c",
+        "nvs_flash.h": "c"
+    }
 }
