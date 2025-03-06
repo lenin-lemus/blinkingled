@@ -16,7 +16,6 @@
 #include "esp_mac.h"
 #include "esp_system.h"
 #include "esp_spiffs.h"
-//#include "spiffs_config.h"
 #include "spi_flash_mmap.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
